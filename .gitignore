@@ -1,0 +1,7 @@
+.env
+data/raw/*.parquet
+outputs/plots/*.png
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv
