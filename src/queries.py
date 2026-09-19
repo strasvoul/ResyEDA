@@ -4,11 +4,17 @@ Extraction queries for building analysis-ready DailyRoutes demand tables.
 
 # --- Core demand signal (capacity/context side) -------------------------
 
-def time_window_filter(column_name: str) -> str:
+def lookback_filter(column_name: str) -> str:
     return f"""
 WHERE EXTRACT(YEAR FROM "{column_name}") >= EXTRACT(YEAR FROM CURRENT_DATE) - :lookback_years
 AND "{column_name}" <= CURRENT_DATE - INTERVAL '1 DAY'
 """
+
+def fetch_single_season(column_name: str, season_year: int) -> str:
+    return f"""
+WHERE EXTRACT(YEAR FROM "{column_name}") = {season_year}
+"""
+
 
 DAILY_ROUTES = f"""
 SELECT
@@ -29,7 +35,7 @@ SELECT
     "BoatScheduledTime"     AS boat_scheduled_time,
     "CreatedDate"           AS created_date
 FROM "DailyRoutes"
-{time_window_filter("Day")}
+{lookback_filter("Day")}
 """
 
 # --- Capacity / operating-year context ---------------------------------
@@ -84,7 +90,7 @@ SELECT
     "Type"                                 AS booking_type,
     "IndividualBookingType"                AS individual_booking_type
 FROM "Bookings"
-{time_window_filter("Details_Date")}
+{lookback_filter("Details_Date")}
 """
 
 BOOKING_TRANSPORTATIONS = """

@@ -5,7 +5,7 @@ signal, not just a secondary lead-time feature.
 Usage:
     python run_eda.py                     # cached data if available
     python run_eda.py --refresh           # force a fresh DB pull
-    python run_eda.py --lookback-days 730
+    python run_eda.py --lookback-years 2
 """
 import argparse
 from src.constants import DEFAULT_LOOKBACK_YEARS, NON_RESERVED_STATUS_CODES
@@ -26,14 +26,14 @@ from src.eda import run_all
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--refresh", action="store_true")
-    parser.add_argument("--lookback-days", type=int, default=None)
+    parser.add_argument("--lookback-years", type=int, default=None)
     args = parser.parse_args()
 
     kwargs = {"refresh": args.refresh}
-    if args.lookback_days is not None:
-        kwargs["lookback_days"] = args.lookback_days
+    if args.lookback_years is not None:
+        kwargs["lookback_years"] = args.lookback_years
 
-    print(f"Extracting tables for {DEFAULT_LOOKBACK_YEARS + 1} seasons:")
+    print(f"Extracting tables for the past {kwargs.get('lookback_years', DEFAULT_LOOKBACK_YEARS) + 1} seasons:")
     tables = extract_all(**kwargs)
 
     print("\nBuilding enriched daily-routes demand table...")

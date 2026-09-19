@@ -25,7 +25,7 @@ def _cache_path(name: str) -> Path:
     return RAW_DIR / f"{name}.parquet"
 
 
-def extract_table(name: str, sql: str, refresh: bool) -> pd.DataFrame:
+def extract_table(name: str, sql: str, refresh: bool, lookback_years: int) -> pd.DataFrame:
     cache_path = _cache_path(name)
     if cache_path.exists() and not refresh:
         print(f"[cache] {name} <- {cache_path.name} ({len(pd.read_parquet(cache_path)):,} rows)")
@@ -33,7 +33,7 @@ def extract_table(name: str, sql: str, refresh: bool) -> pd.DataFrame:
 
     print(f"[db]    {name} ...")
     engine = get_engine()
-    params = {"lookback_years": DEFAULT_LOOKBACK_YEARS} if name in LOOKBACK_PARAMETERIZED else {}
+    params = {"lookback_years": lookback_years} if name in LOOKBACK_PARAMETERIZED else {}
     with engine.connect() as conn:
         df = pd.read_sql(text(sql), conn, params=params)
 
@@ -42,9 +42,9 @@ def extract_table(name: str, sql: str, refresh: bool) -> pd.DataFrame:
     return df
 
 
-def extract_all(refresh: bool = False) -> dict[str, pd.DataFrame]:
+def extract_all(refresh: bool = False, lookback_years: int = DEFAULT_LOOKBACK_YEARS) -> dict[str, pd.DataFrame]:
     return {
-        name: extract_table(name, sql, refresh)
+        name: extract_table(name, sql, refresh, lookback_years)
         for name, sql in ALL_QUERIES.items()
     }
 

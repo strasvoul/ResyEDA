@@ -31,7 +31,8 @@ TARGET_COLS = ["booked_group_seats", "booked_individual_seats"]
 
 def volume_and_coverage(df: pd.DataFrame) -> pd.DataFrame:
     summary = (
-        df.groupby("train_number")
+        df[df["is_special_route"] == False]
+        .groupby("train_number")
         .agg(
             n_rows=("daily_route_id", "count"),
             first_day=("day", "min"),
