@@ -1,90 +1,47 @@
 # resy demand-forecasting EDA
 
-Stage A (native-data-only) exploratory data analysis for the seat-demand
-forecasting project, built directly against the `resy` schema.
+Exploratory data analysis of seat demand for the `resy` schema (Postgres). Stage A: native DB data only.
 
 ## Setup
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+.venv\Scripts\activate            # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-
-cp .env.example .env
-# edit .env with your real DB host/port/name/user/password
-# (use a read-only DB user if at all possible)
+cp .env.example .env              # fill in DB host/port/name/user/password (read-only user preferred)
 ```
 
 ## Run
 
 ```bash
-python run_eda.py                    # first run: pulls from DB, caches to data/raw/*.parquet
-python run_eda.py                    # subsequent runs: reads from cache, instant
-python run_eda.py --refresh          # force a fresh pull from the DB
-python run_eda.py --lookback-days 730
+python run_eda.py             # pulls from DB on first run, then reads cache in data/raw/*.parquet
+python run_eda.py --refresh   # force a fresh DB pull
+python -m src.db              # test the DB connection only
 ```
 
-Test just the DB connection on its own:
+Plots are saved to `outputs/plots/`.
 
-```bash
-python -m src.db
-```
+## Configuration
 
-## What this does
+[src/constants.py](src/constants.py) holds:
+- `DEFAULT_LOOKBACK_YEARS` - how many seasons back to pull `daily_routes` and `bookings`.
+- `NON_RESERVED_STATUS_CODES` - booking statuses excluded from derived demand (4 cancelled, 5 no-show, 7 cancelled and refunded).
+- Booking type codes and the individual booking types excluded from lead-time analysis.
 
-1. **`src/db.py`** — connection, credentials from `.env` only, never hardcoded.
-2. **`src/queries.py`** — one SQL query per source table (kept close to raw
-   on purpose; joins happen in pandas so each step is inspectable).
-3. **`src/extract.py`** — runs the queries, caches results as parquet in
-   `data/raw/` so you're not re-hitting the DB on every EDA iteration.
-4. **`src/enrich.py`** — the non-trivial joins:
-   - `DailyRoutes` → `YearParameters` → `OperatingYears` → `PricingCatalogs`
-     → `SeasonDefinitions` to attach a `season_type` per day (there's no
-     direct FK from a route to a season, see the module docstring).
-   - `Tags` → `is_tagged_period` flag as a holiday/special-period proxy.
-   - Flags EF-Core sentinel values (`DepartureTime = 0001-01-01`,
-     `YearParametersId` = all-zero UUID) so they don't get mistaken for
-     real observations.
-5. **`src/eda.py`** — the actual checks:
-   - volume/coverage per route (flags cold-start routes)
-   - sentinel + calendar-gap report (closure vs. missing data)
-   - target histograms (raw + log1p), skew, zero-inflation, by season
-   - time series plots + ACF/PACF for the busiest routes
-   - a first look at capacity-breach class balance, for the downstream
-     classification stage
+## Modules
 
-Plots land in `outputs/plots/`. Everything prints a short diagnostic to
-stdout as it runs, so you can `python run_eda.py | tee eda_log.txt` for a
-record of the run.
+- `src/db.py` - DB connection; credentials from `.env`.
+- `src/queries.py` - one SQL query per table.
+- `src/extract.py` - runs queries, caches to parquet.
+- `src/enrich.py` - sentinel flagging, holiday flag from `tags`, demand derived from bookings (`bookings` -> `booking_transportations` -> `daily_routes`, one row per leg), derived-vs-stored comparison, lead time per booking.
+- `src/eda.py` - coverage, closures and calendar gaps, target distributions, time series, capacity breach preview, derived-vs-stored demand, lead time, pickup curves (group / individual / per type / mixed).
 
-## Validating the pipeline without touching the DB
+## Notes
 
-`tests/make_synthetic_tables.py` builds fake tables shaped exactly like
-`extract_all()`'s output (including a deliberately partial season mapping
-and a seasonal closure gap), so you can sanity-check `enrich.py`/`eda.py`
-logic before ever pointing it at the real database:
+- `Bookings` has no direct link to `DailyRoutes`; the join goes through `booking_transportations` (originating and return transportation IDs).
+- Bookings with `Details_NoTransportation = True` are dropped from derived demand.
+- `IsSpecialRoute` and `IsEnabled` rows are kept in the raw pull and not excluded automatically.
 
-```bash
-python -c "
-from tests.make_synthetic_tables import tables
-from src.enrich import build_demand_table
-from src.eda import run_all
-run_all(build_demand_table(tables))
-"
-```
+## Testing without the DB
 
-This has already been run once during development (output showed everything
-working correctly, including the season-match-rate and sentinel warnings
-firing as expected). Feel free to delete `tests/` once you've validated
-against your real DB — it has no role in the production pipeline.
-
-## Notes / known caveats
-
-- `enrich.build_season_lookup` prints a match rate — if it's low, the
-  season-join assumption likely doesn't hold for some `YearParameters`
-  rows and needs a closer look before this feeds a model.
-- `IsSpecialRoute` and `IsEnabled` rows are included in the raw pull but
-  **not** excluded automatically — decide deliberately whether to filter
-  them before modeling (the coverage report flags how many there are).
-- This is Stage A only (native schema data). Weather and public-holiday
-  enrichment are a separate, later step per the Stage A/B comparison plan.
+`tests/make_synthetic_tables.py` builds synthetic tables to run the pipeline offline. Correlation between derived and stored demand is near zero on this data by design.
